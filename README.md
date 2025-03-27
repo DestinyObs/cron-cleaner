@@ -37,18 +37,47 @@ The script monitors essential services (e.g., Nginx, MySQL) and restarts them if
 Old temp files waste space. Security patches are life-saving. This script takes care of both, so you don’t have to do it manually like some medieval peasant.
 
 ---
-
 ## Deep Dive Into the Code
 
 ### 1. Setting Up Logging
 
 ```bash
-LOG_FILE="/var/log/system_maintenance.log"
+LOG_DIR="./logs"
+LOG_FILE="$LOG_DIR/system_maintenance.log"
 ```
 
-Everything the script does gets logged here, so you can trace back when things went wrong (or prove to your boss that it wasn’t your fault).
+All script actions are recorded in a custom logging directory to avoid system-level permission issues. This ensures the logs are accessible without requiring elevated privileges.
 
-### 2. Defining Important Variables
+Additionally, the script ensures the log directory exists:
+
+```bash
+if [ ! -d "$LOG_DIR" ]; then
+    mkdir -p "$LOG_DIR"
+fi
+```
+
+### 2. Placeholder Log Files
+
+The script creates placeholders for missing log files (`auth.log` and `syslog`):
+
+```bash
+AUTH_LOG="./auth.log"
+SYS_LOG="./syslog"
+
+if [ ! -f "$AUTH_LOG" ]; then
+    touch "$AUTH_LOG"
+    log "ℹ️ Created placeholder for auth.log."
+fi
+
+if [ ! -f "$SYS_LOG" ]; then
+    touch "$SYS_LOG"
+    log "ℹ️ Created placeholder for syslog."
+fi
+```
+
+This step eliminates execution errors caused by non-existent files.
+
+### 3. Defining Important Variables
 
 ```bash
 TEMP_DIR="/tmp"
@@ -58,11 +87,11 @@ CPU_THRESHOLD=75
 MEM_THRESHOLD=75
 ```
 
-- **TEMP\_DIR**: Where temp files go to die.
-- **CRITICAL\_SERVICES**: Add more if you don’t like surprises.
-- **Thresholds**: Numbers beyond which alarms should go off.
+- **TEMP_DIR**: Temporary files older than 7 days are deleted.
+- **CRITICAL_SERVICES**: Defines services critical to your environment.
+- **Thresholds**: Sets alarm limits for resource usage.
 
-### 3. Logging Function
+### 4. Logging Function
 
 ```bash
 log() {
@@ -70,9 +99,9 @@ log() {
 }
 ```
 
-Logs messages with timestamps—so you can pinpoint the exact moment your server started misbehaving.
+Messages are logged with timestamps for easy troubleshooting.
 
-### 4. Monitoring System Resources
+### 5. Monitoring System Resources
 
 ```bash
 CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
@@ -80,47 +109,47 @@ MEM_USAGE=$(free | awk '/Mem/{printf("%.2f"), $3/$2 * 100}')
 DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
 ```
 
-- **top**: Extracts CPU usage.
-- **free**: Gets memory usage.
-- **df**: Checks disk space.
+- Extracts CPU, memory, and disk usage.
+- Checks resource levels against thresholds:
+  
+  ```bash
+  if (( $(echo "$CPU_USAGE > $CPU_THRESHOLD" | bc -l) )); then
+      log "⚠️ High CPU Usage detected: ${CPU_USAGE}%"
+  fi
+  ```
 
-If the numbers exceed thresholds, the script raises an alarm:
+Warnings are raised if limits are exceeded.
 
-```bash
-if (( $(echo "$CPU_USAGE > $CPU_THRESHOLD" | bc -l) )); then
-    log "⚠️ High CPU Usage detected: ${CPU_USAGE}%"
-fi
-```
+### 6. Analyzing Logs for Security & Errors
 
-Similar checks exist for memory and disk.
-
-### 5. Analyzing Logs for Security & Errors
-
-```bash
-FAILED_LOGINS=$(grep "Failed password" /var/log/auth.log | wc -l)
-SYSTEM_ERRORS=$(grep -i "error" /var/log/syslog | wc -l)
-```
-
-- Counts failed SSH login attempts.
-- Scans system logs for errors.
-
-If things look fishy, the script logs a warning:
+The script analyzes failed SSH login attempts and system errors:
 
 ```bash
+FAILED_LOGINS=$(grep "Failed password" ./auth.log | wc -l)
+SYSTEM_ERRORS=$(grep -i "error" ./syslog | wc -l)
+
 if [ "$FAILED_LOGINS" -gt 5 ]; then
     log "🚨 Multiple failed SSH login attempts detected!"
 fi
+
+if [ "$SYSTEM_ERRORS" -gt 10 ]; then
+    log "⚠️ High number of system errors detected!"
+fi
 ```
 
-### 6. Cleaning Up Temporary Files
+This ensures you stay informed of potential security risks or system instability.
+
+### 7. Cleaning Up Temporary Files
 
 ```bash
 find "$TEMP_DIR" -type f -atime +7 -delete
 ```
 
-Deletes temp files older than 7 days, because hoarding is bad.
+Old temporary files are cleared to improve system performance.
 
-### 7. Restarting Critical Services
+### 8. Restarting Critical Services
+
+The script checks critical services and restarts them if they are not running:
 
 ```bash
 for service in "${CRITICAL_SERVICES[@]}"; do
@@ -135,29 +164,31 @@ for service in "${CRITICAL_SERVICES[@]}"; do
             log "❌ Failed to restart $service!"
         fi
     fi
+done
 ```
 
-The script checks each service and restarts it if it’s down—because downtime is expensive, and customers don’t care about your excuses.
+### 9. Applying System Updates
 
-### 8. Applying System Updates
+To avoid permission issues, the script checks for elevated privileges before attempting updates:
 
 ```bash
+if [ "$EUID" -ne 0 ]; then
+    log "⚠️ System updates require elevated permissions. Please run the script with sudo."
+    return
+fi
+
 apt update && apt upgrade -y
-```
 
-Keeps your system up to date without manual intervention.
-
-```bash
 if [ $? -eq 0 ]; then
     log "✅ System updates completed successfully."
 else
-    log "❌ System updates failed! Check logs."
+    log "❌ System updates failed! Check the logs for details."
 fi
 ```
 
-Because nobody likes outdated, vulnerable software.
+This ensures you know when and how to address missing updates.
 
-### 9. Running Everything in Order
+### 10. Running Everything in Sequence
 
 ```bash
 main() {
@@ -171,20 +202,23 @@ main() {
 main
 ```
 
-Each function runs in sequence, ensuring smooth operations while you sip coffee like a boss.
+The script smoothly executes all steps, keeping your system maintained with minimal intervention.
 
 ---
 
 ## Automating with Cron
 
-To make this run every day at midnight, add this line to your crontab:
+To schedule the script daily at midnight:
 
 ```bash
 0 0 * * * /path/to/script.sh
 ```
 
-Run `crontab -e` and paste the above line. Boom! Automated maintenance.
+Paste this into `crontab` via `crontab -e` for automatic maintenance tasks.
 
+---
+
+Ensure the script has execution permissions (`chmod +x script.sh`) and is run with `sudo` to function correctly.
 ---
 
 ## Final Thoughts
