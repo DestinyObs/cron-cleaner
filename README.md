@@ -1,4 +1,4 @@
-# Maintenance Script: Keeping Your Linux Box in Check (Without Losing Your Sanity)
+# Maintenance Script: Keeping Your Linux Box in Check
 
 ## Introduction
 
