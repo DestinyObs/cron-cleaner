@@ -189,7 +189,7 @@ Run `crontab -e` and paste the above line. Boom! Automated maintenance.
 
 ## Final Thoughts
 
-This script does the dirty work while you enjoy a stress-free sysadmin life. Customize it to fit your needs, tweak the logs for extra flair, and bask in the glory of a well-maintained system.
+This script is just one of many ways to automate system maintenance. It’s a simple yet effective tool to help you monitor and manage your system natively. More advanced methods exist, but this provides a solid foundation for understanding how things work under the hood.
 
 Happy automating! 🛠️🚀
 
