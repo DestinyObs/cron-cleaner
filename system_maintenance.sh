@@ -1,7 +1,29 @@
 #!/bin/bash
 
-# Define the log file where all actions and outputs will be recorded
-LOG_FILE="/var/log/system_maintenance.log"
+# Define the directory and log file where all actions and outputs will be recorded
+LOG_DIR="./logs"
+LOG_FILE="$LOG_DIR/system_maintenance.log"
+
+# Ensure the log directory exists; create it if it doesn't
+if [ ! -d "$LOG_DIR" ]; then
+    mkdir -p "$LOG_DIR"
+fi
+# Define placeholders for system log files
+AUTH_LOG="./auth.log"
+SYS_LOG="./syslog"
+
+# Ensure the log files exist; create them if they don't
+if [ ! -f "$AUTH_LOG" ]; then
+    touch "$AUTH_LOG"
+    log "ℹ️ Created placeholder for auth.log."
+fi
+
+if [ ! -f "$SYS_LOG" ]; then
+    touch "$SYS_LOG"
+    log "ℹ️ Created placeholder for syslog."
+fi
+
+
 
 # Directory containing temporary files to clean up
 TEMP_DIR="/tmp"
@@ -57,10 +79,10 @@ analyze_logs() {
     log "Analyzing system logs for security issues..."
 
     # Count the number of failed SSH login attempts
-    FAILED_LOGINS=$(grep "Failed password" /var/log/auth.log | wc -l)
+    FAILED_LOGINS=$(grep "Failed password" ./auth.log | wc -l)
     
     # Count the number of general system errors from the syslog
-    SYSTEM_ERRORS=$(grep -i "error" /var/log/syslog | wc -l)
+    SYSTEM_ERRORS=$(grep -i "error" ./syslog | wc -l)
 
     # Log findings
     log "Failed SSH logins: $FAILED_LOGINS | System Errors: $SYSTEM_ERRORS"
@@ -102,9 +124,12 @@ optimize_performance() {
 
 # Function to apply system updates
 apply_updates() {
-    log "Applying system updates..."
+    if [ "$EUID" -ne 0 ]; then
+        log "⚠️ System updates require elevated permissions. Please run the script with sudo."
+        return
+    fi
     
-    # Run `apt` commands to fetch and apply updates automatically
+    log "Applying system updates..."
     apt update && apt upgrade -y
     
     if [ $? -eq 0 ]; then
@@ -113,6 +138,7 @@ apply_updates() {
         log "❌ System updates failed! Check the logs for details."
     fi
 }
+
 
 # Main function to execute all maintenance tasks in sequence
 main() {
