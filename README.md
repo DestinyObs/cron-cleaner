@@ -1,229 +1,171 @@
-# Maintenance Script: Keeping Your Linux Box in Check
+# System Maintenance Script
 
-## Introduction
+## Overview
+This script automates essential system maintenance tasks, including:
+- Monitoring system resource usage (CPU, memory, disk space)
+- Analyzing authentication and system logs for security and errors
+- Cleaning up temporary files and restarting critical services
+- Applying system updates (requires sudo)
 
-Welcome, esteemed engineer, noble sysadmin, or brave soul who just realized their server is on fire. 🎩🔥
+## How It Works
+The script follows a structured process:
+1. **Logging Setup** - Ensures logs are recorded for all actions.
+2. **Resource Monitoring** - Checks system performance and alerts if thresholds are exceeded.
+3. **Log Analysis** - Scans logs for security risks and system issues.
+4. **System Optimization** - Cleans up temporary files and ensures services are running.
+5. **System Updates** - Applies updates (if run with sudo).
+6. **Execution Flow** - Runs all maintenance tasks sequentially.
 
-System maintenance is like brushing your teeth—you can skip it, but eventually, it’ll cost you. This script is your trusty sidekick, automating crucial tasks like monitoring CPU and disk usage, restarting critical services, and applying security updates. Think of it as a tiny, relentless janitor for your Linux system, sweeping up messes before they turn into disasters.
+## Script Breakdown
 
-This guide will walk you through the script’s functions, ensuring that you understand what each piece does instead of just running it blindly and praying to the Bash gods.
-
-And no, this knowledge is NOT a waste—whether you’re a rookie or a battle-hardened sysadmin, mastering these skills will make you the unsung hero of your team.
-
----
-
-## Why Is This Important?
-
-### 1. Monitoring Resource Usage
-
-Ever had a server slow down so badly you suspected it had just given up on life? Monitoring CPU, RAM, and disk usage helps you spot trouble before your users start screaming on Twitter.
-
-This script logs system metrics and warns you when things start going south.
-
-### 2. Detecting Security Threats
-
-Hackers never sleep, and your logs are proof. SSH brute-force attacks happen all the time, and failed logins pile up like rejection emails from that dream job you applied for.
-
-This script helps you keep an eye on unauthorized access attempts and system errors.
-
-### 3. Ensuring Critical Services Stay Running
-
-Imagine waking up to find out your database crashed hours ago, and now your boss is calling. 😱
-
-The script monitors essential services (e.g., Nginx, MySQL) and restarts them if they go down—because humans need sleep, but servers don’t.
-
-### 4. Automating System Cleanup & Updates
-
-Old temp files waste space. Security patches are life-saving. This script takes care of both, so you don’t have to do it manually like some medieval peasant.
-
----
-## Deep Dive Into the Code
-
-### 1. Setting Up Logging
-
+### 1. Logging Setup
 ```bash
 LOG_DIR="./logs"
-LOG_FILE="$LOG_DIR/system_maintenance.log"
+LOG_FILE="$LOG_DIR/maintenance.log"
+mkdir -p "$LOG_DIR"
 ```
-
-All script actions are recorded in a custom logging directory to avoid system-level permission issues. This ensures the logs are accessible without requiring elevated privileges.
-
-Additionally, the script ensures the log directory exists:
-
-```bash
-if [ ! -d "$LOG_DIR" ]; then
-    mkdir -p "$LOG_DIR"
-fi
-```
-
-### 2. Placeholder Log Files
-
-The script creates placeholders for missing log files (`auth.log` and `syslog`):
-
-```bash
-AUTH_LOG="./auth.log"
-SYS_LOG="./syslog"
-
-if [ ! -f "$AUTH_LOG" ]; then
-    touch "$AUTH_LOG"
-    log "ℹ️ Created placeholder for auth.log."
-fi
-
-if [ ! -f "$SYS_LOG" ]; then
-    touch "$SYS_LOG"
-    log "ℹ️ Created placeholder for syslog."
-fi
-```
-
-This step eliminates execution errors caused by non-existent files.
-
-### 3. Defining Important Variables
-
-```bash
-TEMP_DIR="/tmp"
-CRITICAL_SERVICES=("nginx" "mysql")
-DISK_THRESHOLD=80
-CPU_THRESHOLD=75
-MEM_THRESHOLD=75
-```
-
-- **TEMP_DIR**: Temporary files older than 7 days are deleted.
-- **CRITICAL_SERVICES**: Defines services critical to your environment.
-- **Thresholds**: Sets alarm limits for resource usage.
-
-### 4. Logging Function
+- **LOG_DIR**: Stores log files.
+- **LOG_FILE**: Defines the log file path.
+- **mkdir -p "$LOG_DIR"**: Ensures the log directory exists.
 
 ```bash
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
 }
 ```
-
-Messages are logged with timestamps for easy troubleshooting.
-
-### 5. Monitoring System Resources
+- **log() Function**: Records messages with timestamps to both console and log file.
 
 ```bash
-CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
-MEM_USAGE=$(free | awk '/Mem/{printf("%.2f"), $3/$2 * 100}')
-DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+touch "./auth.log" "./syslog"
 ```
+- Creates placeholder log files if they don't exist to avoid errors.
 
-- Extracts CPU, memory, and disk usage.
-- Checks resource levels against thresholds:
-  
-  ```bash
-  if (( $(echo "$CPU_USAGE > $CPU_THRESHOLD" | bc -l) )); then
-      log "⚠️ High CPU Usage detected: ${CPU_USAGE}%"
-  fi
-  ```
-
-Warnings are raised if limits are exceeded.
-
-### 6. Analyzing Logs for Security & Errors
-
-The script analyzes failed SSH login attempts and system errors:
-
+### 2. Resource Monitoring
 ```bash
-FAILED_LOGINS=$(grep "Failed password" ./auth.log | wc -l)
-SYSTEM_ERRORS=$(grep -i "error" ./syslog | wc -l)
-
-if [ "$FAILED_LOGINS" -gt 5 ]; then
-    log "🚨 Multiple failed SSH login attempts detected!"
-fi
-
-if [ "$SYSTEM_ERRORS" -gt 10 ]; then
-    log "⚠️ High number of system errors detected!"
-fi
+DISK_THRESHOLD=80
+CPU_THRESHOLD=75
+MEM_THRESHOLD=75
 ```
-
-This ensures you stay informed of potential security risks or system instability.
-
-### 7. Cleaning Up Temporary Files
+- Defines the maximum acceptable CPU, memory, and disk usage percentages.
 
 ```bash
-find "$TEMP_DIR" -type f -atime +7 -delete
+monitor_resources() {
+    log "Checking system stats..."
+    CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
+    MEM_USAGE=$(free | awk '/Mem/{printf "%.2f", $3/$2 * 100}')
+    DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
 ```
-
-Old temporary files are cleared to improve system performance.
-
-### 8. Restarting Critical Services
-
-The script checks critical services and restarts them if they are not running:
+- **CPU_USAGE**: Extracts CPU usage from the `top` command.
+- **MEM_USAGE**: Calculates memory usage from `free`.
+- **DISK_USAGE**: Retrieves disk usage from `df`.
 
 ```bash
-for service in "${CRITICAL_SERVICES[@]}"; do
-    if systemctl is-active --quiet "$service"; then
-        log "✅ $service is running."
-    else
-        log "⚠️ $service is not running. Restarting..."
-        systemctl restart "$service"
-        if systemctl is-active --quiet "$service"; then
-            log "🔄 Successfully restarted $service."
-        else
-            log "❌ Failed to restart $service!"
-        fi
+    log "CPU: ${CPU_USAGE}% | Memory: ${MEM_USAGE}% | Disk: ${DISK_USAGE}%"
+```
+- Logs current system resource usage.
+
+```bash
+    [[ $(echo "$CPU_USAGE > $CPU_THRESHOLD" | bc -l) -eq 1 ]] && log "Alert: CPU usage high (${CPU_USAGE}%)"
+    [[ $(echo "$MEM_USAGE > $MEM_THRESHOLD" | bc -l) -eq 1 ]] && log "Alert: Memory usage high (${MEM_USAGE}%)"
+    [[ $DISK_USAGE -gt $DISK_THRESHOLD ]] && log "Alert: Disk space almost full (${DISK_USAGE}%)"
+}
+```
+- Checks if usage exceeds thresholds and logs warnings.
+
+### 3. Log Analysis
+```bash
+review_logs() {
+    log "Analyzing system logs..."
+    FAILED_LOGINS=$(grep -c "Failed password" ./auth.log)
+    SYSTEM_ERRORS=$(grep -i "error" ./syslog | wc -l)
+```
+- **FAILED_LOGINS**: Counts SSH failed login attempts from `auth.log`.
+- **SYSTEM_ERRORS**: Counts system errors in `syslog`.
+
+```bash
+    log "Failed SSH attempts: $FAILED_LOGINS | System errors: $SYSTEM_ERRORS"
+```
+- Logs the number of security and error events.
+
+```bash
+    [[ $FAILED_LOGINS -gt 5 ]] && log "Security Notice: Multiple failed SSH logins detected."
+    [[ $SYSTEM_ERRORS -gt 10 ]] && log "System Alert: Too many errors found in system logs."
+}
+```
+- Logs warnings if SSH login failures or system errors exceed predefined limits.
+
+### 4. System Optimization
+```bash
+cleanup_and_restart() {
+    log "Running optimization tasks..."
+    find "/tmp" -type f -atime +7 -delete && log "Cleared old files in /tmp."
+```
+- Deletes temporary files older than 7 days.
+
+```bash
+    for service in "${SERVICES[@]}"; do
+        systemctl is-active --quiet "$service" || {
+            log "Restarting $service..."
+            systemctl restart "$service" && log "$service is now active." || log "Failed to restart $service!"
+        }
+    done
+}
+```
+- **Checks and restarts critical services** (`nginx`, `mysql`) if they are inactive.
+
+### 5. System Updates
+```bash
+update_system() {
+    if [[ $EUID -ne 0 ]]; then
+        log "Note: Use sudo to apply updates."
+        return
     fi
-done
+    log "Updating system packages..."
+    apt update && apt upgrade -y && log "System update completed successfully." || log "Update encountered errors."
+}
 ```
+- **update_system() Function**:
+  - Ensures the script is run with sudo before proceeding.
+  - Updates all installed packages.
+  - Logs the success or failure of the update process.
 
-### 9. Applying System Updates
-
-To avoid permission issues, the script checks for elevated privileges before attempting updates:
-
-```bash
-if [ "$EUID" -ne 0 ]; then
-    log "⚠️ System updates require elevated permissions. Please run the script with sudo."
-    return
-fi
-
-apt update && apt upgrade -y
-
-if [ $? -eq 0 ]; then
-    log "✅ System updates completed successfully."
-else
-    log "❌ System updates failed! Check the logs for details."
-fi
-```
-
-This ensures you know when and how to address missing updates.
-
-### 10. Running Everything in Sequence
-
+### 6. Execution Flow
 ```bash
 main() {
-    log "===== System Maintenance Script Started ====="
-    monitor_system
-    analyze_logs
-    optimize_performance
-    apply_updates
-    log "===== System Maintenance Script Completed ====="
+    log "===== Starting Maintenance Tasks ====="
+    monitor_resources
+    review_logs
+    cleanup_and_restart
+    update_system
+    log "===== Maintenance Tasks Finished ====="
 }
 main
 ```
+- Calls all functions sequentially.
+- Logs the start and end of the maintenance process.
 
-The script smoothly executes all steps, keeping your system maintained with minimal intervention.
-
----
-
-## Automating with Cron
-
-To schedule the script daily at midnight:
-
+## Usage
+### Running the Script
+To execute the script:
 ```bash
-0 0 * * * /path/to/script.sh
+bash maintenance.sh
+```
+If running system updates, use:
+```bash
+sudo bash maintenance.sh
 ```
 
-Paste this into `crontab` via `crontab -e` for automatic maintenance tasks.
+### Logging
+- Logs are saved in `logs/maintenance.log`.
+- All actions are recorded for troubleshooting.
 
----
+### Customization
+- Modify `SERVICES` to monitor and restart additional services.
+- Adjust thresholds (`DISK_THRESHOLD`, `CPU_THRESHOLD`, `MEM_THRESHOLD`) as needed.
 
-Ensure the script has execution permissions (`chmod +x script.sh`) and is run with `sudo` to function correctly.
----
+## Conclusion
+This script automates routine maintenance tasks, improving system stability and security. It is structured for efficiency, clear logging, and easy customization.
 
-## Final Thoughts
-
-This script is just one of many ways to automate system maintenance. It’s a simple yet effective tool to help you monitor and manage your system natively. More advanced methods exist, but this provides a solid foundation for understanding how things work under the hood.
 
 Happy automating! 🛠️🚀
 
