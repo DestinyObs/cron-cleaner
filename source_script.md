@@ -1,7 +1,3 @@
-Got it! You want to extract all the functionality from the script into individual shell commands so that you can run each task directly on the CLI. Here’s how you can do that:  
-
----
-
 ### **1️⃣ Set Up Logging**  
 First, define the logging mechanism:  
 
